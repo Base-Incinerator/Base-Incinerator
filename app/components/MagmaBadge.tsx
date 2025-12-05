@@ -15,125 +15,221 @@ type MagmaProfile = {
 
 export function MagmaBadge() {
   const { address } = useAccount();
-  const [profile, setProfile] = useState<MagmaProfile | null>(null);
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
 
+  const [profile, setProfile] = useState<MagmaProfile | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Fetch MAGMA profile for connected wallet
   useEffect(() => {
     if (!address) {
       setProfile(null);
+      setError(null);
+      setLoading(false);
       return;
     }
 
-    const load = async () => {
+    const fetchProfile = async () => {
       try {
         setLoading(true);
+        setError(null);
+
+        // Adjust the endpoint to match your backend if needed
         const res = await fetch(`/api/magma/profile?address=${address}`);
         if (!res.ok) {
-          setProfile(null);
-          return;
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Failed to load MAGMA profile");
         }
+
         const data = (await res.json()) as MagmaProfile;
         setProfile(data);
       } catch (err) {
-        console.error("Failed to load MAGMA profile", err);
+        console.error("MAGMA profile error:", err);
+        if (err instanceof Error) {
+          setError(err.message || "Unknown error while loading MAGMA profile");
+        } else {
+          setError("Unknown error while loading MAGMA profile");
+        }
       } finally {
         setLoading(false);
       }
     };
 
-    load();
+    fetchProfile();
   }, [address]);
 
-  if (!address || !profile) {
-    return null;
-  }
+  // Build referral URL from current origin + ref param
+  const referralUrl =
+    typeof window !== "undefined" && profile
+      ? `${window.location.origin}?ref=${profile.walletAddress}`
+      : "";
 
-  const points = profile.magmaPointsTotal ?? 0;
-  const rank = profile.rank;
-  const totalUsers = profile.totalUsers;
-
-  let referralUrl = "";
-  if (typeof window !== "undefined") {
-    referralUrl = `${window.location.origin}?ref=${profile.walletAddress}`;
-  }
+  const truncatedReferralUrl =
+    referralUrl && referralUrl.length > 50
+      ? `${referralUrl.slice(0, 28)}...${referralUrl.slice(-14)}`
+      : referralUrl;
 
   const handleCopy = async () => {
     if (!referralUrl) return;
     try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
+      if (navigator?.clipboard?.writeText) {
         await navigator.clipboard.writeText(referralUrl);
+      } else {
+        // Basic fallback for very old browsers
+        const textarea = document.createElement("textarea");
+        textarea.value = referralUrl;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
       }
-      // in futuro possiamo aggiungere un piccolo toast
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error("Failed to copy referral link", err);
+      console.error("Copy referral link failed:", err);
     }
   };
 
+  if (!address) {
+    return null;
+  }
+
+  const points = profile?.magmaPointsTotal ?? 0;
+  const rankText =
+    profile?.rank != null && profile.totalUsers
+      ? `Rank #${profile.rank}`
+      : profile?.rank != null
+      ? `Rank #${profile.rank}`
+      : "Unranked";
+
+  const referralSummary =
+    profile && profile.referralCount > 0
+      ? `Referral rewards: ${profile.referralPointsEarned} MAGMA from ${
+          profile.referralCount
+        } referred ${profile.referralCount === 1 ? "user" : "users"}.`
+      : "You do not have referral rewards yet.";
+
   return (
-    <div className="relative">
+    <div className="relative inline-block text-white">
+      {/* Badge pill */}
       <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-full border px-3 py-1 text-sm bg-black/40 hover:bg-black/60"
+        type="button"
+        onClick={() => setOpen(true)}
+        disabled={loading && !profile}
+        className="flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-semibold shadow-md
+                   bg-gradient-to-r from-orange-500 to-pink-500 hover:opacity-90 disabled:opacity-60"
       >
-        <span role="img" aria-label="fire">
+        <span role="img" aria-label="flame">
           🔥
         </span>
-        <span>{points} $MAGMA</span>
-        {rank && totalUsers > 0 && (
-          <span className="text-xs opacity-80">Rank #{rank}</span>
+        {loading && !profile ? (
+          <span>Loading MAGMA...</span>
+        ) : (
+          <>
+            <span>{points} $MAGMA</span>
+            {profile && profile.rank != null && (
+              <span className="text-xs opacity-80">· {rankText}</span>
+            )}
+          </>
         )}
-        {loading && <span className="text-xs opacity-60">...</span>}
       </button>
 
-      {open && (
-        <div className="absolute right-0 mt-2 w-80 rounded-2xl border bg-black/90 p-4 text-sm shadow-lg z-20">
-          <div className="flex items-center justify-between mb-2">
-            <button
-              onClick={() => setOpen(false)}
-              className="text-xs opacity-70 hover:opacity-100"
-            >
-              Close
-            </button>
-          </div>
-
-          <p className="mb-1">
-            Total points: <strong>{points}</strong>
-          </p>
-
-          {rank && totalUsers > 0 && (
-            <p className="mb-2 text-xs opacity-80">Rank #{rank}</p>
-          )}
-
-          <p className="mb-2">
-            Referral rewards:{" "}
-            <strong>{profile.referralPointsEarned} MAGMA</strong> from{" "}
-            <strong>{profile.referralCount}</strong> referred users.
-          </p>
-
-          <div className="mt-3">
-            <p className="mb-1 text-xs opacity-80">
-              Share your referral link and earn 10 percent of your referred
-              users MAGMA.
-            </p>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 text-xs break-all bg-black/60 rounded-lg px-2 py-1">
-                {referralUrl}
-              </div>
+      {/* Overlay and popover */}
+      {open && profile && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="relative w-full max-w-md rounded-3xl border border-white/10 bg-black/90 px-6 py-5 shadow-xl text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="text-base font-semibold">Your MAGMA profile</h2>
               <button
-                onClick={handleCopy}
-                className="text-xs border rounded-lg px-2 py-1 hover:bg-white hover:text-black"
+                type="button"
+                onClick={() => setOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-sm"
+                aria-label="Close"
               >
-                Copy
+                ×
               </button>
             </div>
-          </div>
 
-          {profile.referredByWallet && (
-            <p className="mt-3 text-xs opacity-70">
-              You were referred by: {profile.referredByWallet}
-            </p>
-          )}
+            {/* Main score block */}
+            <div className="mt-4 rounded-2xl bg-neutral-800 px-4 py-3">
+              <p className="text-xl font-bold">{points} $MAGMA</p>
+              <p className="mt-1 text-xs opacity-80">{rankText}</p>
+
+              {/* Decorative progress bar, always full for color */}
+              <div className="mt-3 h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+                <div
+                  className="h-full w-full rounded-full"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, #ff9900 0%, #ff4b4b 50%, #ff9900 100%)",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Referral rewards summary */}
+            <div className="mt-4 flex items-start gap-2 text-sm">
+              <span className="mt-0.5 text-lg">👥</span>
+              <p className="opacity-90" style={{ marginTop: "7px" }}>
+                {referralSummary}
+              </p>
+            </div>
+
+            {/* Referral link block */}
+            <div className="mt-4">
+              <p className="text-xs uppercase tracking-wide opacity-70">
+                Your referral link
+              </p>
+              <p className="mt-1 text-xs opacity-80">
+                Share it with a friend and earn 10 % of all MAGMA points they
+                generate.
+              </p>
+
+              <div className="mt-3 flex items-center gap-2 rounded-xl bg-neutral-800 px-3 py-2 text-xs">
+                <div className="flex-1 overflow-hidden">
+                  <p className="font-mono truncate">{truncatedReferralUrl}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="whitespace-nowrap rounded-lg border border-white/20 px-3 py-1 text-xs hover:bg-white hover:text-black"
+                >
+                  {copied ? "Copied!" : "Copy"}
+                </button>
+              </div>
+
+              {copied && (
+                <p className="mt-2 text-xs text-green-400">
+                  Link copied to clipboard.
+                </p>
+              )}
+            </div>
+
+            {/* Referred by info */}
+            {profile.referredByWallet && (
+              <p className="mt-4 text-xs opacity-70">
+                You were referred by: {profile.referredByWallet}
+              </p>
+            )}
+
+            {/* Error message, if any */}
+            {error && (
+              <p className="mt-3 text-xs text-red-400">
+                Failed to load some MAGMA data: {error}
+              </p>
+            )}
+          </div>
         </div>
       )}
     </div>

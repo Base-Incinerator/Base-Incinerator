@@ -83,6 +83,30 @@ export default function BurnForm() {
   const [showManualInput, setShowManualInput] = useState(false);
   const selectRef = useRef<HTMLSelectElement | null>(null);
 
+  const isManualMode = showManualInput;
+  const hasDropdownAsset = selectedAssetIndex !== "";
+
+  const hasManualAsset =
+    isManualMode &&
+    tokenAddrValid &&
+    tokenType !== "unknown" &&
+    ((tokenType === "erc20" && !!amountStr) ||
+      (tokenType === "erc721" && !!tokenIdStr) ||
+      (tokenType === "erc1155" && !!tokenIdStr && !!amountStr));
+
+  const hasActionableAsset = isManualMode ? hasManualAsset : hasDropdownAsset;
+
+  const handleToggleManualInput = () => {
+    setShowManualInput((prev) => {
+      const next = !prev;
+      if (next) {
+        // When entering manual mode, clear dropdown selection
+        setSelectedAssetIndex("");
+      }
+      return next;
+    });
+  };
+
   // Store referral address from URL in localStorage
   useEffect(() => {
     const ref = searchParams.get("ref");
@@ -151,7 +175,7 @@ export default function BurnForm() {
     })();
   }, [pc]);
 
-  // Detect token standard (manual detection)
+  // Import token standard (manual import)
   const detect = async () => {
     if (!pc || !tokenAddrHex) {
       setTokenType("unknown");
@@ -199,7 +223,7 @@ export default function BurnForm() {
 
       setTokenType("unknown");
     } catch (err) {
-      console.error("Detect error", err);
+      console.error("Import error", err);
       setTokenType("unknown");
     }
   };
@@ -451,14 +475,26 @@ export default function BurnForm() {
     "";
 
   // UX helpers
-  const hasAssetChosen = !!selectedAssetIndex;
   const needsAnyApprove =
     (tokenType === "erc20" && needApprove20) ||
     (tokenType === "erc721" && needApprove721) ||
     (tokenType === "erc1155" && needApprove1155);
 
   const handleBurnClick = () => {
-    if (!hasAssetChosen) {
+    if (isManualMode) {
+      // In manual mode we rely on manual fields
+      if (!hasManualAsset) {
+        return;
+      }
+      if (!tokenAddrValid) {
+        return;
+      }
+      onBurn();
+      return;
+    }
+
+    // Dropdown mode
+    if (!hasDropdownAsset) {
       selectRef.current?.focus();
       return;
     }
@@ -470,12 +506,67 @@ export default function BurnForm() {
     onBurn();
   };
 
+  // Pre wallet connect tutorial
+  if (!address) {
+    return (
+      <div className="w-full max-w-xl mx-auto mt-8 px-4 sm:px-0">
+        <div className="rounded-2xl border border-white/10 bg-black/80 px-6 py-5 space-y-5 shadow-lg">
+          <h2 className="text-lg font-semibold">How to use Base Incinerator</h2>
+
+          <div className="space-y-4 text-sm opacity-90">
+            <div className="flex items-start gap-3">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold">
+                1
+              </div>
+              <div>
+                <p className="font-medium">Connect your wallet</p>
+                <p className="text-xs opacity-70">
+                  Use the button above to connect a wallet on the Base.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold">
+                2
+              </div>
+              <div>
+                <p className="font-medium">Select which asset to burn</p>
+                <p className="text-xs opacity-70">
+                  After connecting you will see a dropdown with your ERC20,
+                  ERC721 and ERC1155 assets on Base.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold">
+                3
+              </div>
+              <div>
+                <p className="font-medium">Burn it permanently</p>
+                <p className="text-xs opacity-70">
+                  Confirm the burn transaction and collect $MAGMA points, the
+                  asset will be sent to an unrecoverable address.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-xs opacity-60">
+            You must be connected on Base to start burning assets.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full max-w-xl mx-auto space-y-4">
-      {/* Wallet assets dropdown */}
-      {address && (
+    <div className="w-full max-w-xl mx-auto space-y-6 px-4 sm:px-0">
+      {/* Wallet assets dropdown - hidden when manual input is active */}
+      {address && !showManualInput && (
         <div className="grid gap-3">
-          <label className="text-sm opacity-80">
+          <label className="text-sm font-medium text-white/80">
             Select an asset from your wallet (Base Sepolia)
           </label>
 
@@ -498,7 +589,7 @@ export default function BurnForm() {
           {!assetsLoading && walletAssets.length > 0 && (
             <select
               ref={selectRef}
-              className="border rounded-xl p-3 bg-transparent"
+              className="w-full rounded-2xl border border-white/20 bg-black/60 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
               value={selectedAssetIndex}
               onChange={(e) => {
                 const value = e.target.value;
@@ -556,19 +647,21 @@ export default function BurnForm() {
       <div className="flex justify-start">
         <button
           type="button"
-          onClick={() => setShowManualInput((v) => !v)}
-          className="rounded-xl border px-4 py-2 text-sm"
+          onClick={handleToggleManualInput}
+          className="rounded-full border border-white/40 px-4 py-2 text-sm hover:bg-white/10 transition-colors"
         >
           {showManualInput ? "Hide manual input" : "+ Manual input"}
         </button>
       </div>
 
-      {/* Manual input fallback (hidden until needed) */}
+      {/* Manual input fallback */}
       {showManualInput && (
         <div className="grid gap-3">
-          <label className="text-sm opacity-80">Token address</label>
+          <label className="text-sm font-medium text-white/80">
+            Token address
+          </label>
           <input
-            className="border rounded-xl p-3 bg-transparent"
+            className="w-full rounded-2xl border border-white/20 bg-black/40 px-4 py-3 text-sm placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-orange-400"
             placeholder="0x..."
             value={tokenAddr}
             onChange={(e) => setTokenAddr(e.target.value.trim())}
@@ -576,13 +669,13 @@ export default function BurnForm() {
           <div className="flex items-center gap-3">
             <button
               onClick={detect}
-              className="inline-flex rounded-xl border px-4 py-2 text-sm"
+              className="inline-flex rounded-full border border-white/40 px-4 py-2 text-sm hover:bg-white/10 transition-colors disabled:opacity-50"
               disabled={!tokenAddrValid || isPending}
             >
-              Detect
+              Import
             </button>
             <p className="text-sm opacity-70">
-              Detected: {tokenType.toUpperCase()}
+              Imported: {tokenType.toUpperCase()}
             </p>
           </div>
         </div>
@@ -590,9 +683,9 @@ export default function BurnForm() {
 
       {tokenType === "erc20" && (
         <div className="grid gap-3">
-          <label className="text-sm opacity-80">Amount:</label>
+          <label className="text-sm font-medium text-white/80">Amount:</label>
           <input
-            className="border rounded-xl p-3 bg-transparent"
+            className="w-full rounded-2xl border border-white/20 bg-black/40 px-4 py-3 text-sm placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-orange-400"
             placeholder="e.g. 10.5"
             value={amountStr}
             onChange={(e) => setAmountStr(e.target.value)}
@@ -602,9 +695,9 @@ export default function BurnForm() {
 
       {tokenType === "erc721" && (
         <div className="grid gap-3">
-          <label className="text-sm opacity-80">Token ID</label>
+          <label className="text-sm font-medium text-white/80">Token ID</label>
           <input
-            className="border rounded-xl p-3 bg-transparent"
+            className="w-full rounded-2xl border border-white/20 bg-black/40 px-4 py-3 text-sm placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-orange-400"
             placeholder="e.g. 1234"
             value={tokenIdStr}
             onChange={(e) => setTokenIdStr(e.target.value)}
@@ -614,16 +707,16 @@ export default function BurnForm() {
 
       {tokenType === "erc1155" && (
         <div className="grid gap-3">
-          <label className="text-sm opacity-80">Token ID</label>
+          <label className="text-sm font-medium text-white/80">Token ID</label>
           <input
-            className="border rounded-xl p-3 bg-transparent"
+            className="w-full rounded-2xl border border-white/20 bg-black/40 px-4 py-3 text-sm placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-orange-400"
             placeholder="e.g. 1"
             value={tokenIdStr}
             onChange={(e) => setTokenIdStr(e.target.value)}
           />
-          <label className="text-sm opacity-80">Quantity</label>
+          <label className="text-sm font-medium text-white/80">Quantity</label>
           <input
-            className="border rounded-xl p-3 bg-transparent"
+            className="w-full rounded-2xl border border-white/20 bg-black/40 px-4 py-3 text-sm placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-orange-400"
             placeholder="e.g. 5"
             value={amountStr}
             onChange={(e) => setAmountStr(e.target.value)}
@@ -633,11 +726,11 @@ export default function BurnForm() {
 
       {/* Actions */}
       <div className="flex flex-wrap gap-3 items-center">
-        {hasAssetChosen && tokenType === "erc20" && needApprove20 && (
+        {hasActionableAsset && tokenType === "erc20" && needApprove20 && (
           <button
             onClick={onApprove20}
             disabled={isPending || !tokenAddrValid}
-            className="rounded-xl border px-4 py-2"
+            className="rounded-2xl border border-white/60 px-5 py-2.5 text-sm font-semibold bg-white text-black hover:bg-orange-500 hover:border-orange-500 hover:text-black disabled:opacity-50 transition-colors"
           >
             {isPending && pendingAction === "approve"
               ? "Approving..."
@@ -645,11 +738,11 @@ export default function BurnForm() {
           </button>
         )}
 
-        {hasAssetChosen && tokenType === "erc721" && needApprove721 && (
+        {hasActionableAsset && tokenType === "erc721" && needApprove721 && (
           <button
             onClick={onApprove721}
             disabled={isPending || !tokenAddrValid || !tokenIdStr}
-            className="rounded-xl border px-4 py-2"
+            className="rounded-2xl border border-white/60 px-5 py-2.5 text-sm font-semibold bg-white text-black hover:bg-orange-500 hover:border-orange-500 hover:text-black disabled:opacity-50 transition-colors"
           >
             {isPending && pendingAction === "approve"
               ? "Approving..."
@@ -657,11 +750,11 @@ export default function BurnForm() {
           </button>
         )}
 
-        {hasAssetChosen && tokenType === "erc1155" && needApprove1155 && (
+        {hasActionableAsset && tokenType === "erc1155" && needApprove1155 && (
           <button
             onClick={onApprove1155}
             disabled={isPending || !tokenAddrValid}
-            className="rounded-xl border px-4 py-2"
+            className="rounded-2xl border border-white/60 px-5 py-2.5 text-sm font-semibold bg-white text-black hover:bg-orange-500 hover:border-orange-500 hover:text-black disabled:opacity-50 transition-colors"
           >
             {isPending && pendingAction === "approve"
               ? "Approving..."
@@ -672,14 +765,8 @@ export default function BurnForm() {
         {!needsAnyApprove && (
           <button
             onClick={handleBurnClick}
-            disabled={!feeWei || isPending}
-            className="rounded-xl px-4 py-2 font-semibold transition 
-                      hover:opacity-90 disabled:opacity-50"
-            style={{
-              color: "#ff9900",
-              border: "2px solid #ff9900",
-              backgroundColor: "black",
-            }}
+            disabled={!feeWei || isPending || !hasActionableAsset}
+            className="rounded-2xl border-2 border-[#ff9900] px-6 py-2.5 font-semibold text-[#ff9900] bg-black transition-colors hover:bg-[#ff9900] hover:text-black disabled:opacity-50"
           >
             {isPending && pendingAction === "burn" ? "Burning..." : "Burn"}
           </button>
