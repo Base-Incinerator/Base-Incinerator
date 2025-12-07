@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import {
   useAccount,
   usePublicClient,
@@ -32,10 +32,20 @@ type WalletAsset = {
   decimals?: number;
 };
 
+type WalletAssetsResponse = {
+  assets?: WalletAsset[];
+  error?: string;
+};
+
+type BurnFormProps = {
+  // Optional callback to let the parent refresh things like MagmaBadge
+  onBurnCompleted?: () => void;
+};
+
 const IFACE_ERC721 = "0x80ac58cd";
 const IFACE_ERC1155 = "0xd9b67a26";
 
-export default function BurnForm() {
+export default function BurnForm({ onBurnCompleted }: BurnFormProps) {
   const { address } = useAccount();
   const pc = usePublicClient();
   const searchParams = useSearchParams();
@@ -115,6 +125,49 @@ export default function BurnForm() {
     });
   };
 
+  // Helper function to reload wallet assets (used on address change and after a burn)
+  const reloadWalletAssets = useCallback(async () => {
+    if (!address) {
+      // Reset state when wallet disconnects
+      setWalletAssets([]);
+      setAssetsError(null);
+      setAssetsLoading(false);
+      setSelectedAssetIndex("");
+      return;
+    }
+
+    try {
+      setAssetsLoading(true);
+      setAssetsError(null);
+      setSelectedAssetIndex("");
+
+      const res = await fetch(`/api/wallet-assets?address=${address}`);
+
+      let data: WalletAssetsResponse = {};
+      try {
+        data = (await res.json()) as WalletAssetsResponse;
+      } catch {
+        data = {};
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to load wallet assets");
+      }
+
+      const assets = data.assets ?? [];
+      setWalletAssets(assets);
+    } catch (err) {
+      console.error("wallet-assets error:", err);
+      if (err instanceof Error) {
+        setAssetsError(err.message || "Unknown error while loading assets");
+      } else {
+        setAssetsError("Unknown error while loading assets");
+      }
+    } finally {
+      setAssetsLoading(false);
+    }
+  }, [address]);
+
   // Store referral address from URL in localStorage
   useEffect(() => {
     const ref = searchParams.get("ref");
@@ -127,43 +180,9 @@ export default function BurnForm() {
 
   // Fetch wallet assets when address changes
   useEffect(() => {
-    if (!address) {
-      setWalletAssets([]);
-      setAssetsError(null);
-      setAssetsLoading(false);
-      setSelectedAssetIndex("");
-      return;
-    }
-
-    const fetchAssets = async () => {
-      try {
-        setAssetsLoading(true);
-        setAssetsError(null);
-        setSelectedAssetIndex("");
-
-        const res = await fetch(`/api/wallet-assets?address=${address}`);
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || "Failed to load wallet assets");
-        }
-
-        const data = await res.json();
-        const assets = (data.assets ?? []) as WalletAsset[];
-        setWalletAssets(assets);
-      } catch (err) {
-        console.error("wallet-assets error:", err);
-        if (err instanceof Error) {
-          setAssetsError(err.message || "Unknown error while loading assets");
-        } else {
-          setAssetsError("Unknown error while loading assets");
-        }
-      } finally {
-        setAssetsLoading(false);
-      }
-    };
-
-    fetchAssets();
-  }, [address]);
+    // This will only run when reloadWalletAssets changes, i.e. on address change
+    reloadWalletAssets();
+  }, [reloadWalletAssets]);
 
   // Read fee once
   useEffect(() => {
@@ -442,7 +461,7 @@ export default function BurnForm() {
     setPendingAction(null);
   }, [receipt, pendingAction, tokenType]);
 
-  // After tx is confirmed, record MAGMA burn on backend
+  // After burn tx is confirmed, record MAGMA burn on backend and refresh UI
   useEffect(() => {
     const recordBurn = async () => {
       if (!receipt || !address || !shouldRecordBurn) return;
@@ -462,6 +481,22 @@ export default function BurnForm() {
             referrer: ref,
           }),
         });
+
+        // Refresh wallet assets so dropdown reflects the new balances
+        await reloadWalletAssets();
+
+        // Reset manual mode and clear inputs so the user starts fresh
+        setShowManualInput(false);
+        setTokenAddr("");
+        setTokenType("unknown");
+        setAmountStr("");
+        setTokenIdStr("");
+        setSelectedAssetIndex("");
+
+        // Notify parent (for example to refresh MagmaBadge)
+        if (onBurnCompleted) {
+          onBurnCompleted();
+        }
       } catch (err) {
         console.error("Failed to record MAGMA burn", err);
       } finally {
@@ -471,7 +506,7 @@ export default function BurnForm() {
     };
 
     recordBurn();
-  }, [receipt, address, shouldRecordBurn]);
+  }, [receipt, address, shouldRecordBurn, reloadWalletAssets, onBurnCompleted]);
 
   const explorerBase =
     baseSepolia.blockExplorers?.default?.url ?? "https://sepolia.basescan.org";
@@ -662,7 +697,7 @@ export default function BurnForm() {
       {showManualInput && (
         <div className="grid gap-3">
           <label className="text-sm font-medium text-white/80">
-            Token address
+            Token / NFT address
           </label>
           <input
             className="w-full rounded-2xl border border-white/20 bg-black/40 px-4 py-3 text-sm placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-orange-400"

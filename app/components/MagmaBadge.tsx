@@ -14,7 +14,12 @@ type MagmaProfile = {
   totalUsers: number;
 };
 
-export function MagmaBadge() {
+type MagmaBadgeProps = {
+  // When this changes, badge will re-fetch profile and re-animate points
+  refreshKey?: number;
+};
+
+export function MagmaBadge({ refreshKey }: MagmaBadgeProps) {
   const { address } = useAccount();
 
   const [profile, setProfile] = useState<MagmaProfile | null>(null);
@@ -62,7 +67,7 @@ export function MagmaBadge() {
     };
 
     fetchProfile();
-  }, [address]);
+  }, [address, refreshKey]);
 
   // Animate points when profile data updates
   useEffect(() => {
@@ -72,7 +77,7 @@ export function MagmaBadge() {
     }
 
     const target = profile.magmaPointsTotal ?? 0;
-    const duration = 700; // ms
+    const duration = 1000; // ms
     const startValue = 0;
     let startTime: number | null = null;
     let frameId: number;
