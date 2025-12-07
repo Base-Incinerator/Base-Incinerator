@@ -564,7 +564,7 @@ export default function BurnForm({ onBurnCompleted }: BurnFormProps) {
               <div>
                 <p className="font-medium">Connect your wallet</p>
                 <p className="text-xs opacity-70">
-                  Use the button above to connect a wallet on the Base.
+                  Use the button above to connect a wallet on the Base chain.
                 </p>
               </div>
             </div>
@@ -590,7 +590,7 @@ export default function BurnForm({ onBurnCompleted }: BurnFormProps) {
                 <p className="font-medium">Burn it permanently</p>
                 <p className="text-xs opacity-70">
                   Confirm the burn transaction and collect $MAGMA points, the
-                  asset will be sent to an unrecoverable address.
+                  asset will be sent to an unrecoverable smart contract.
                 </p>
               </div>
             </div>
@@ -598,6 +598,13 @@ export default function BurnForm({ onBurnCompleted }: BurnFormProps) {
 
           <p className="text-xs opacity-60">
             You must be connected on Base to start burning assets.
+          </p>
+
+          <p className="text-xs text-yellow-400/90 border border-yellow-400/30 rounded-lg px-3 py-2 bg-yellow-400/5">
+            Burning assets is permanent and cannot be reversed. By using Base
+            Incinerator you understand and agree that you are solely responsible
+            for your decisions and that the platform cannot recover burned
+            assets or be held liable for any loss.
           </p>
         </div>
       </div>

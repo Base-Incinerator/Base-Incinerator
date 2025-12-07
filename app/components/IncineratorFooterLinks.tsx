@@ -1,10 +1,11 @@
 "use client";
 
-import { BookOpen, Github } from "lucide-react";
+import { BookOpen, Github, Mail } from "lucide-react";
 
 export function IncineratorFooterLinks() {
   return (
-    <div className="w-full max-w-xl mx-auto px-4 sm:px-0 pt-10 pb-8">
+    <div className="w-full max-w-xl mx-auto px-4 sm:px-0 pt-2 pb-8 space-y-4">
+      {/* Icons */}
       <div className="flex justify-center">
         <div
           className="flex items-center gap-4 rounded-full border border-white/15 bg-white/5 px-6 py-3 shadow-lg"
@@ -51,7 +52,22 @@ export function IncineratorFooterLinks() {
           >
             <Github className="h-4 w-4" />
           </a>
+
+          {/* Email */}
+          <a
+            href="mailto:support@base-incinerator.xyz"
+            aria-label="Contact support"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 hover:bg-white hover:text-black transition-colors"
+          >
+            <Mail className="h-4 w-4" />
+          </a>
         </div>
+      </div>
+
+      {/* Footer text */}
+      <div className="text-center text-xs opacity-60 space-y-1">
+        <p>Powered by Base & Moralis</p>
+        <p>© 2025</p>
       </div>
     </div>
   );
