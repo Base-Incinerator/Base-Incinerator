@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 const MORALIS_API_BASE = "https://deep-index.moralis.io/api/v2.2";
 
-const CHAIN = "base sepolia";
+const CHAIN = "base";
 
 type IncineratorAsset = {
   type: "ERC20" | "ERC721" | "ERC1155";

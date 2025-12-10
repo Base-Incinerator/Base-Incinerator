@@ -16,7 +16,7 @@ export function IncineratorFooterLinks() {
         >
           {/* X / Twitter */}
           <a
-            href="#"
+            href="https://x.com/BaseIncinerator"
             target="_blank"
             rel="noreferrer"
             aria-label="Open X"
@@ -33,7 +33,7 @@ export function IncineratorFooterLinks() {
 
           {/* Docs / GitBook */}
           <a
-            href="#"
+            href="https://base-incinerator.gitbook.io/"
             target="_blank"
             rel="noreferrer"
             aria-label="Open documentation"
@@ -44,7 +44,7 @@ export function IncineratorFooterLinks() {
 
           {/* GitHub */}
           <a
-            href="#"
+            href="https://github.com/Base-Incinerator"
             target="_blank"
             rel="noreferrer"
             aria-label="Open GitHub"

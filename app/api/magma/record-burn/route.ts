@@ -22,7 +22,7 @@ type RequestBody = {
 const MAGMA_PER_BURN = 100;
 const REFERRAL_POINTS = 10;
 const MORALIS_API_BASE = "https://deep-index.moralis.io/api/v2.2";
-const MORALIS_CHAIN = "base sepolia";
+const MORALIS_CHAIN = "base";
 
 function normalizeAddress(addr: string | null | undefined): string | null {
   if (!addr) return null;

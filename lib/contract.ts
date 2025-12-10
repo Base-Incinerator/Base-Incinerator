@@ -1,6 +1,6 @@
 // lib/contract.ts
 
-export const INCINERATOR_ADDRESS = "0x2Ec549753ede12fA6da534dFaA77635bB478140e";
+export const INCINERATOR_ADDRESS = "0x0ef72a5702De1D74b6de42fC9d71041E4a104723";
 
 // ABI minimale per leggere fee/paused e fare le 3 write
 export const INCINERATOR_ABI = [

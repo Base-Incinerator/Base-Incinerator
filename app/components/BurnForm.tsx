@@ -8,7 +8,7 @@ import {
   useWaitForTransactionReceipt,
 } from "wagmi";
 import { formatEther, parseUnits, isAddress, BaseError, Hex } from "viem";
-import { baseSepolia } from "wagmi/chains";
+import { base } from "wagmi/chains";
 import { useSearchParams } from "next/navigation";
 import { INCINERATOR_ADDRESS, INCINERATOR_ABI } from "@/lib/contract";
 import {
@@ -17,6 +17,7 @@ import {
   ERC721_EXTRA_ABI,
   ERC1155_EXTRA_ABI,
 } from "@/lib/abis";
+import { Info } from "lucide-react";
 
 type TokenType = "erc20" | "erc721" | "erc1155" | "unknown";
 
@@ -79,7 +80,7 @@ export default function BurnForm({ onBurnCompleted }: BurnFormProps) {
   const { data: receipt, isLoading: isConfirming } =
     useWaitForTransactionReceipt({
       hash: txHash as Hex | undefined,
-      confirmations: 3,
+      confirmations: 2,
     });
 
   // Approval flags
@@ -509,7 +510,7 @@ export default function BurnForm({ onBurnCompleted }: BurnFormProps) {
   }, [receipt, address, shouldRecordBurn, reloadWalletAssets, onBurnCompleted]);
 
   const explorerBase =
-    baseSepolia.blockExplorers?.default?.url ?? "https://sepolia.basescan.org";
+    base.blockExplorers?.default?.url ?? "https://basescan.org";
   const txUrl = txHash ? `${explorerBase}/tx/${txHash}` : undefined;
 
   const errMsg =
@@ -604,7 +605,16 @@ export default function BurnForm({ onBurnCompleted }: BurnFormProps) {
             Burning assets is permanent and cannot be reversed. By using Base
             Incinerator you understand and agree that you are solely responsible
             for your decisions and that the platform cannot recover burned
-            assets or be held liable for any loss.
+            assets or be held liable for any loss.{" "}
+            <a
+              href="https://base-incinerator.gitbook.io/base-incinerator-docs/security-and-disclaimer/user-responsability"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline opacity-80 hover:opacity-100 transition"
+              aria-label="Open security & disclaimer"
+            >
+              Learn more
+            </a>
           </p>
         </div>
       </div>
@@ -628,7 +638,7 @@ export default function BurnForm({ onBurnCompleted }: BurnFormProps) {
 
           {!assetsLoading && !assetsError && walletAssets.length === 0 && (
             <p className="text-sm opacity-70">
-              No assets detected for this wallet on Base Sepolia.
+              No assets detected for this wallet on Base.
             </p>
           )}
 
@@ -832,8 +842,18 @@ export default function BurnForm({ onBurnCompleted }: BurnFormProps) {
       )}
 
       {feeWei && (
-        <p className="text-xs opacity-60">
-          Burn fee: {formatEther(feeWei)} ETH
+        <p className="flex items-center gap-1 text-xs opacity-60">
+          <a
+            href="https://base-incinerator.gitbook.io/base-incinerator-docs/how-it-works/burn-fee"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open burn fee documentation"
+            className="inline-flex items-center justify-center rounded-full bg-white/5 p-1 hover:bg-white/10"
+          >
+            <Info className="h-4 w-4" />
+          </a>
+
+          <span>Burn fee: {formatEther(feeWei)} ETH</span>
         </p>
       )}
     </div>

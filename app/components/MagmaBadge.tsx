@@ -3,6 +3,7 @@
 import { useAccount } from "wagmi";
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { Info } from "lucide-react";
 
 type MagmaProfile = {
   walletAddress: string;
@@ -203,7 +204,19 @@ export function MagmaBadge({ refreshKey }: MagmaBadgeProps) {
             <div className="rounded-[22px] bg-black/90 px-6 py-5 text-white">
               {/* Header */}
               <div className="flex items-center justify-between gap-4">
-                <h2 className="text-base font-semibold">Your MAGMA profile</h2>
+                <h2 className="flex items-center gap-2 text-base font-semibold">
+                  <a
+                    href="https://base-incinerator.gitbook.io/base-incinerator-docs/how-to-use-it/magma-points"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Open MAGMA points documentation"
+                    className="inline-flex items-center justify-center rounded-full bg-white/5 p-1 hover:bg-white/10"
+                  >
+                    <Info className="h-4 w-4" />
+                  </a>
+
+                  <span>Your MAGMA profile</span>
+                </h2>
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
