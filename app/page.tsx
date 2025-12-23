@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import BurnForm from "./components/BurnForm";
 import { MagmaBadge } from "./components/MagmaBadge";
@@ -21,7 +21,9 @@ export default function Home() {
 
       <ConnectButton />
 
-      <BurnForm onBurnCompleted={handleBurnCompleted} />
+      <Suspense fallback={null}>
+        <BurnForm onBurnCompleted={handleBurnCompleted} />
+      </Suspense>
 
       <IncineratorFooterLinks />
     </main>
