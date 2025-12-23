@@ -1,17 +1,7 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import type { RowDataPacket } from "mysql2";
+import { createClient } from "@supabase/supabase-js";
 import { isAddress } from "viem";
 import { INCINERATOR_ADDRESS } from "@/lib/contract";
-
-interface UserRow extends RowDataPacket {
-  magma_points_total: number;
-  referred_by_wallet: string | null;
-}
-
-interface BurnRow extends RowDataPacket {
-  id: number;
-}
 
 type RequestBody = {
   walletAddress: string;
@@ -19,8 +9,29 @@ type RequestBody = {
   referrer?: string | null;
 };
 
+type MagmaUserRow = {
+  wallet_address: string;
+  magma_points_total: number;
+  referral_points_earned: number;
+  referred_by_wallet: string | null;
+};
+
+type MoralisTxResponse = {
+  from_address?: string;
+  to_address?: string;
+  receipt_status?: number | string | null;
+  receipt_status_code?: number | string | null;
+  receipt_status_name?: string | null;
+};
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY! // server-only
+);
+
 const MAGMA_PER_BURN = 100;
 const REFERRAL_POINTS = 10;
+
 const MORALIS_API_BASE = "https://deep-index.moralis.io/api/v2.2";
 const MORALIS_CHAIN = "base";
 
@@ -32,12 +43,29 @@ function normalizeAddress(addr: string | null | undefined): string | null {
 function normalizeTxHash(tx: string | null | undefined): string | null {
   if (!tx) return null;
   const trimmed = tx.trim().toLowerCase();
-  const isValid = /^0x[a-f0-9]{64}$/.test(trimmed);
-  return isValid ? trimmed : null;
+  return /^0x[a-f0-9]{64}$/.test(trimmed) ? trimmed : null;
 }
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isStatusSuccess(statusRaw: unknown): boolean {
+  if (typeof statusRaw === "number") return statusRaw === 1;
+  if (typeof statusRaw === "string") {
+    const s = statusRaw.trim().toLowerCase();
+    return s === "1" || s === "success";
+  }
+  return false;
+}
+
+function pickReceiptStatus(tx: MoralisTxResponse): unknown {
+  return (
+    tx.receipt_status ??
+    tx.receipt_status_code ??
+    tx.receipt_status_name ??
+    null
+  );
 }
 
 export async function POST(req: Request) {
@@ -64,33 +92,33 @@ export async function POST(req: Request) {
       referrer = null;
     }
 
-    // 1) Check if this txHash was already processed
-    const [burnRows] = await db.query<BurnRow[]>(
-      "SELECT id FROM magma_burns WHERE tx_hash = ?",
-      [txHash]
-    );
+    // 1️⃣ Prevent double counting
+    const { data: burnExisting, error: burnCheckError } = await supabase
+      .from("magma_burns")
+      .select("id")
+      .eq("tx_hash", txHash)
+      .maybeSingle<{ id: number }>();
 
-    if (burnRows.length > 0) {
-      // Already counted, just return current total
-      const [userRows] = await db.query<UserRow[]>(
-        "SELECT magma_points_total FROM magma_users WHERE wallet_address = ?",
-        [wallet]
-      );
+    if (burnCheckError) throw burnCheckError;
 
-      const total = userRows[0]?.magma_points_total ?? 0;
+    if (burnExisting?.id) {
+      const { data: userRow } = await supabase
+        .from("magma_users")
+        .select("magma_points_total")
+        .eq("wallet_address", wallet)
+        .maybeSingle<{ magma_points_total: number }>();
 
       return NextResponse.json({
         success: true,
         alreadyCounted: true,
         wallet,
-        magmaPointsTotal: total,
+        magmaPointsTotal: userRow?.magma_points_total ?? 0,
         awardedPoints: 0,
         referralPointsAwarded: 0,
-        isNewUser: userRows.length === 0,
       });
     }
 
-    // 2) Verify the tx on-chain via Moralis
+    // 2️⃣ Verify transaction via Moralis
     const apiKey = process.env.MORALIS_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
@@ -119,22 +147,7 @@ export async function POST(req: Request) {
         break;
       }
 
-      const text = await res.text().catch(() => "");
-      console.error("Moralis tx error", res.status, text);
-
-      const isNotFound =
-        res.status === 404 &&
-        text.toLowerCase().includes("no transaction found");
-
-      if (isNotFound && attempt < 2) {
-        await delay(3000);
-        continue;
-      }
-
-      return NextResponse.json(
-        { error: "Failed to fetch transaction from Moralis" },
-        { status: 502 }
-      );
+      if (attempt < 2) await delay(3000);
     }
 
     if (!txRes) {
@@ -144,127 +157,102 @@ export async function POST(req: Request) {
       );
     }
 
-    const txJson = (await txRes.json()) as Record<string, unknown>;
+    const txJson = (await txRes.json()) as MoralisTxResponse;
 
-    const from = (txJson.from_address as string | undefined)?.toLowerCase();
-    const to = (txJson.to_address as string | undefined)?.toLowerCase();
-    const statusRaw =
-      txJson.receipt_status ??
-      txJson.receipt_status_code ??
-      txJson.receipt_status_name;
+    const from = txJson.from_address?.toLowerCase() ?? null;
+    const to = txJson.to_address?.toLowerCase() ?? null;
+    const statusRaw = pickReceiptStatus(txJson);
 
-    const incinerator = INCINERATOR_ADDRESS.toLowerCase();
-
-    // Basic validation: from must match wallet, to must be incinerator, status success
-    const isFromOk = from === wallet;
-    const isToOk = to === incinerator;
-    const isStatusOk =
-      statusRaw === 1 ||
-      statusRaw === "1" ||
-      statusRaw === "SUCCESS" ||
-      statusRaw === "success";
-
-    if (!isFromOk || !isToOk || !isStatusOk) {
+    if (
+      from !== wallet ||
+      to !== INCINERATOR_ADDRESS.toLowerCase() ||
+      !isStatusSuccess(statusRaw)
+    ) {
       return NextResponse.json(
-        {
-          error: "Transaction is not a valid burn for this wallet",
-          details: {
-            from,
-            to,
-            status: statusRaw,
-          },
-        },
+        { error: "Transaction is not a valid burn" },
         { status: 400 }
       );
     }
 
-    // 3) At this point, txHash is valid and not yet counted.
-    //    Update user + referrer + insert magma_burns.
+    // 3️⃣ Read existing user
+    const { data: existingUser } = await supabase
+      .from("magma_users")
+      .select("magma_points_total, referred_by_wallet")
+      .eq("wallet_address", wallet)
+      .maybeSingle<
+        Pick<MagmaUserRow, "magma_points_total" | "referred_by_wallet">
+      >();
 
-    // Check if user already exists
-    const [userRows] = await db.query<UserRow[]>(
-      "SELECT magma_points_total, referred_by_wallet FROM magma_users WHERE wallet_address = ?",
-      [wallet]
-    );
-
-    const isNewUser = userRows.length === 0;
-    const existingUser = userRows[0] ?? null;
-
-    // If user already has a referrer, keep it. Otherwise use referrer (if any)
-    let effectiveReferrer: string | null =
+    const effectiveReferrer =
       existingUser?.referred_by_wallet ?? referrer ?? null;
 
-    if (effectiveReferrer === wallet) {
-      effectiveReferrer = null;
-    }
-
-    // Insert or update user with +100 MAGMA
-    if (isNewUser) {
-      await db.query(
-        `INSERT INTO magma_users
-          (wallet_address, magma_points_total, referred_by_wallet)
-         VALUES (?, ?, ?)`,
-        [wallet, MAGMA_PER_BURN, effectiveReferrer]
-      );
+    // 4️⃣ Upsert / update user
+    if (!existingUser) {
+      await supabase.from("magma_users").insert({
+        wallet_address: wallet,
+        magma_points_total: MAGMA_PER_BURN,
+        referral_points_earned: 0,
+        referred_by_wallet: effectiveReferrer,
+      });
     } else {
-      await db.query(
-        `UPDATE magma_users
-           SET magma_points_total = magma_points_total + ?,
-               referred_by_wallet = COALESCE(referred_by_wallet, ?)
-         WHERE wallet_address = ?`,
-        [MAGMA_PER_BURN, effectiveReferrer, wallet]
-      );
+      await supabase
+        .from("magma_users")
+        .update({
+          magma_points_total:
+            (existingUser.magma_points_total ?? 0) + MAGMA_PER_BURN,
+          referred_by_wallet:
+            existingUser.referred_by_wallet ?? effectiveReferrer,
+        })
+        .eq("wallet_address", wallet);
     }
 
-    // Handle referral rewards (fixed 10 points per burn if referrer exists)
+    // 5️⃣ Referral reward (per burn)
     let referralPointsAwarded = 0;
 
     if (effectiveReferrer && effectiveReferrer !== wallet) {
-      const referralCountIncrement = isNewUser ? 1 : 0;
+      const { data: refRow } = await supabase
+        .from("magma_users")
+        .select("magma_points_total, referral_points_earned")
+        .eq("wallet_address", effectiveReferrer)
+        .maybeSingle<
+          Pick<MagmaUserRow, "magma_points_total" | "referral_points_earned">
+        >();
 
-      await db.query(
-        `INSERT INTO magma_users
-           (wallet_address, magma_points_total, referral_points_earned, referral_count)
-         VALUES (?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE
-           magma_points_total = magma_points_total + VALUES(magma_points_total),
-           referral_points_earned = referral_points_earned + VALUES(referral_points_earned),
-           referral_count = referral_count + ?`,
-        [
-          effectiveReferrer,
-          REFERRAL_POINTS,
-          REFERRAL_POINTS,
-          referralCountIncrement,
-          referralCountIncrement,
-        ]
-      );
+      if (!refRow) {
+        await supabase.from("magma_users").insert({
+          wallet_address: effectiveReferrer,
+          magma_points_total: REFERRAL_POINTS,
+          referral_points_earned: REFERRAL_POINTS,
+          referred_by_wallet: null,
+        });
+      } else {
+        await supabase
+          .from("magma_users")
+          .update({
+            magma_points_total:
+              (refRow.magma_points_total ?? 0) + REFERRAL_POINTS,
+            referral_points_earned:
+              (refRow.referral_points_earned ?? 0) + REFERRAL_POINTS,
+          })
+          .eq("wallet_address", effectiveReferrer);
+      }
 
       referralPointsAwarded = REFERRAL_POINTS;
     }
 
-    // Insert magma_burns row to lock this txHash
-    await db.query(
-      `INSERT INTO magma_burns (wallet_address, tx_hash, points_awarded)
-       VALUES (?, ?, ?)`,
-      [wallet, txHash, MAGMA_PER_BURN]
-    );
-
-    // Read updated total
-    const [updatedRows] = await db.query<UserRow[]>(
-      "SELECT magma_points_total FROM magma_users WHERE wallet_address = ?",
-      [wallet]
-    );
-
-    const total = updatedRows[0]?.magma_points_total ?? MAGMA_PER_BURN;
+    // 6️⃣ Lock txHash
+    await supabase.from("magma_burns").insert({
+      wallet_address: wallet,
+      tx_hash: txHash,
+      points_awarded: MAGMA_PER_BURN,
+    });
 
     return NextResponse.json({
       success: true,
       alreadyCounted: false,
       wallet,
-      magmaPointsTotal: total,
       awardedPoints: MAGMA_PER_BURN,
       referralPointsAwarded,
-      isNewUser,
     });
   } catch (err) {
     console.error("record-burn error", err);

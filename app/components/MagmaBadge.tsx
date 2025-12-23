@@ -144,7 +144,6 @@ export function MagmaBadge({ refreshKey }: MagmaBadgeProps) {
     return null;
   }
 
-  const points = profile?.magmaPointsTotal ?? 0;
   const rankText =
     profile?.rank != null && profile.totalUsers
       ? `Rank #${profile.rank}`
@@ -153,7 +152,7 @@ export function MagmaBadge({ refreshKey }: MagmaBadgeProps) {
       : "Unranked";
 
   const referralSummary =
-    profile && profile.referralCount > 0
+    profile && (profile.referralPointsEarned > 0 || profile.referralCount > 0)
       ? `Referral rewards: ${profile.referralPointsEarned} $MAGMA from ${
           profile.referralCount
         } referred ${profile.referralCount === 1 ? "user" : "users"}.`
@@ -176,7 +175,7 @@ export function MagmaBadge({ refreshKey }: MagmaBadgeProps) {
         ) : (
           <>
             <span>{displayPoints} $MAGMA</span>
-            {profile && profile.rank != null && (
+            {profile && (
               <span className="flex items-center gap-1 text-xs opacity-80">
                 · {rankText}
                 <ChevronDown

@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import type { RowDataPacket } from "mysql2";
+import { createClient } from "@supabase/supabase-js";
 import { isAddress } from "viem";
 
-interface UserRow extends RowDataPacket {
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY! // server-only
+);
+
+type MagmaUserRow = {
+  wallet_address: string;
   magma_points_total: number;
   referral_points_earned: number;
-  referral_count: number;
   referred_by_wallet: string | null;
-}
-
-interface CountRow extends RowDataPacket {
-  count: number;
-}
+};
 
 function normalizeAddress(addr: string | null): string | null {
   if (!addr) return null;
@@ -22,31 +22,39 @@ function normalizeAddress(addr: string | null): string | null {
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const addr = searchParams.get("address");
-    const wallet = normalizeAddress(addr);
+
+    // Keep compatibility with both query params
+    const walletParam =
+      searchParams.get("address") ?? searchParams.get("wallet");
+    const wallet = normalizeAddress(walletParam);
 
     if (!wallet) {
-      return NextResponse.json({ error: "Invalid address" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid wallet address" },
+        { status: 400 }
+      );
     }
 
-    // 1) Get user row
-    const [userRows] = await db.query<UserRow[]>(
-      `SELECT magma_points_total,
-              referral_points_earned,
-              referral_count,
-              referred_by_wallet
-       FROM magma_users
-       WHERE wallet_address = ?`,
-      [wallet]
-    );
+    // 1) Read user profile
+    const { data: user, error: userError } = await supabase
+      .from("magma_users")
+      .select(
+        "wallet_address, magma_points_total, referral_points_earned, referred_by_wallet"
+      )
+      .eq("wallet_address", wallet)
+      .maybeSingle<MagmaUserRow>();
 
-    if (userRows.length === 0) {
-      // User has no points yet
-      const [totalRows] = await db.query<CountRow[]>(
-        "SELECT COUNT(*) AS count FROM magma_users"
-      );
-      const totalUsers = totalRows[0]?.count ?? 0;
+    if (userError) throw userError;
 
+    // 2) Total users (for rank context)
+    const { count: totalUsers, error: totalUsersError } = await supabase
+      .from("magma_users")
+      .select("wallet_address", { count: "exact", head: true });
+
+    if (totalUsersError) throw totalUsersError;
+
+    // If user does not exist yet, return empty profile
+    if (!user) {
       return NextResponse.json({
         walletAddress: wallet,
         magmaPointsTotal: 0,
@@ -54,35 +62,42 @@ export async function GET(req: Request) {
         referralCount: 0,
         referredByWallet: null,
         rank: null,
-        totalUsers,
+        totalUsers: totalUsers ?? 0,
       });
     }
 
-    const user = userRows[0];
-    const points = user.magma_points_total;
+    // 3) Count referred users dynamically
+    const { count: referralCount, error: referralCountError } = await supabase
+      .from("magma_users")
+      .select("wallet_address", { count: "exact", head: true })
+      .eq("referred_by_wallet", wallet);
 
-    // 2) Rank: number of users with more points + 1
-    const [betterRows] = await db.query<CountRow[]>(
-      "SELECT COUNT(*) AS count FROM magma_users WHERE magma_points_total > ?",
-      [points]
-    );
-    const betterCount = betterRows[0]?.count ?? 0;
-    const rank = betterCount + 1;
+    if (referralCountError) throw referralCountError;
 
-    // 3) Total users
-    const [totalRows] = await db.query<CountRow[]>(
-      "SELECT COUNT(*) AS count FROM magma_users"
-    );
-    const totalUsers = totalRows[0]?.count ?? 0;
+    // 4) Rank (1 + users with strictly higher points)
+    const userPoints = user.magma_points_total ?? 0;
+
+    let rank: number | null = null;
+
+    if (userPoints > 0) {
+      const { count: higherCount, error: higherCountError } = await supabase
+        .from("magma_users")
+        .select("wallet_address", { count: "exact", head: true })
+        .gt("magma_points_total", userPoints);
+
+      if (higherCountError) throw higherCountError;
+
+      rank = (higherCount ?? 0) + 1;
+    }
 
     return NextResponse.json({
       walletAddress: wallet,
-      magmaPointsTotal: points,
-      referralPointsEarned: user.referral_points_earned,
-      referralCount: user.referral_count,
+      magmaPointsTotal: userPoints,
+      referralPointsEarned: user.referral_points_earned ?? 0,
+      referralCount: referralCount ?? 0,
       referredByWallet: user.referred_by_wallet,
       rank,
-      totalUsers,
+      totalUsers: totalUsers ?? 0,
     });
   } catch (err) {
     console.error("profile error", err);
