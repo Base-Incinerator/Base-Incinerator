@@ -52,22 +52,13 @@ export function IncineratorFooterLinks() {
           >
             <Github className="h-4 w-4" />
           </a>
-
-          {/* Email */}
-          <a
-            href="mailto:support@base-incinerator.xyz"
-            aria-label="Contact support"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 hover:bg-white hover:text-black transition-colors"
-          >
-            <Mail className="h-4 w-4" />
-          </a>
         </div>
       </div>
 
       {/* Footer text */}
       <div className="text-center text-xs opacity-60 space-y-1">
         <p>Powered by Base & Moralis</p>
-        <p>© 2025</p>
+        <p>© {new Date().getFullYear()}</p>
       </div>
     </div>
   );

@@ -559,7 +559,7 @@ export default function BurnForm({ onBurnCompleted }: BurnFormProps) {
 
           <div className="space-y-4 text-sm opacity-90">
             <div className="flex items-start gap-3">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold">
+              <div className="flex shrink-0 h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold">
                 1
               </div>
               <div>
@@ -571,7 +571,7 @@ export default function BurnForm({ onBurnCompleted }: BurnFormProps) {
             </div>
 
             <div className="flex items-start gap-3">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold">
+              <div className="flex shrink-0 h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold">
                 2
               </div>
               <div>
@@ -584,7 +584,7 @@ export default function BurnForm({ onBurnCompleted }: BurnFormProps) {
             </div>
 
             <div className="flex items-start gap-3">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold">
+              <div className="flex shrink-0 h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold">
                 3
               </div>
               <div>
